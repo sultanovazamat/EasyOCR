@@ -81,6 +81,8 @@ class Reader(object):
         else:
             self.device = gpu
 
+        self.device = "cpu"
+
         self.detection_models = detection_models
         self.recognition_models = recognition_models
 
@@ -93,7 +95,6 @@ class Reader(object):
         
         # recognition model
         separator_list = {}
-
         if recog_network in ['standard'] + [model for model in recognition_models['gen1']] + [model for model in recognition_models['gen2']]:
             if recog_network in [model for model in recognition_models['gen1']]:
                 model = recognition_models['gen1'][recog_network]
@@ -165,8 +166,12 @@ class Reader(object):
                     self.model_lang = 'latin'
                     model = recognition_models['gen2']['latin_g2']
                     recog_network = 'generation2'
-            self.character = model['characters']
 
+            if lang_list[0] == "tjk":
+                self.character = "ЁАБВГДЕЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯҒҚҲҶӢӮ"
+            else:
+                self.character = model['characters']
+                        
             model_path = os.path.join(self.model_storage_directory, model['filename'])
             # check recognition model file
             if recognizer:
@@ -193,8 +198,8 @@ class Reader(object):
         else: # user-defined model
             with open(os.path.join(self.user_network_directory, recog_network+ '.yaml'), encoding='utf8') as file:
                 recog_config = yaml.load(file, Loader=yaml.FullLoader)
-            
-            global imgH # if custom model, save this variable. (from *.yaml)
+                
+            global imgH  # if custom model, save this variable. (from *.yaml)
             if recog_config['imgH']:
                 imgH = recog_config['imgH']
                 
@@ -205,7 +210,7 @@ class Reader(object):
             model_file = recog_network+ '.pth'
             model_path = os.path.join(self.model_storage_directory, model_file)
             self.setLanguageList(lang_list, recog_config)
-
+        
         dict_list = {}
         for lang in lang_list:
             dict_list[lang] = os.path.join(BASE_PATH, 'dict', lang + ".txt")
@@ -228,6 +233,7 @@ class Reader(object):
                     }
             else:
                 network_params = recog_config['network_params']
+            
             self.recognizer, self.converter = get_recognizer(recog_network, network_params,\
                                                          self.character, separator_list,\
                                                          dict_list, model_path, device = self.device, quantize=quantize)

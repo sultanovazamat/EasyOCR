@@ -7,7 +7,7 @@ import torchvision.transforms as transforms
 import numpy as np
 from collections import OrderedDict
 import importlib
-from .utils import CTCLabelConverter
+from .utils import CTCLabelConverter, AttnLabelConverter
 import math
 
 def custom_mean(x):
@@ -124,8 +124,11 @@ def recognizer_predict(model, converter, test_loader, batch_max_length,\
             if decoder == 'greedy':
                 # Select max probabilty (greedy decoding) then decode index to character
                 _, preds_index = preds_prob.max(2)
-                preds_index = preds_index.view(-1)
-                preds_str = converter.decode_greedy(preds_index.data.cpu().detach().numpy(), preds_size.data)
+                if hasattr(converter, 'decode'):
+                    preds_str = converter.decode(preds_index, length_for_pred)
+                else:
+                    preds_index = preds_index.view(-1)
+                    preds_str = converter.decode_greedy(preds_index.data.cpu().detach().numpy(), preds_size.data)
             elif decoder == 'beamsearch':
                 k = preds_prob.cpu().detach().numpy()
                 preds_str = converter.decode_beamsearch(k, beamWidth=beamWidth)
@@ -153,24 +156,27 @@ def recognizer_predict(model, converter, test_loader, batch_max_length,\
 def get_recognizer(recog_network, network_params, character,\
                    separator_list, dict_list, model_path,\
                    device = 'cpu', quantize = True):
-
-    converter = CTCLabelConverter(character, separator_list, dict_list)
-    num_class = len(converter.character)
-
+    
     if recog_network == 'generation1':
         model_pkg = importlib.import_module("easyocr.model.model")
     elif recog_network == 'generation2':
         model_pkg = importlib.import_module("easyocr.model.vgg_model")
     else:
         model_pkg = importlib.import_module(recog_network)
-    model = model_pkg.Model(num_class=num_class, **network_params)
 
+    if hasattr(model_pkg, 'Attention'):
+        converter = AttnLabelConverter(character)
+    else:
+        converter = CTCLabelConverter(character, separator_list, dict_list)
+    num_class = len(converter.character)
+    model = model_pkg.Model(num_class=num_class, **network_params)
     if device == 'cpu':
         state_dict = torch.load(model_path, map_location=device, weights_only=False)
         new_state_dict = OrderedDict()
         for key, value in state_dict.items():
             new_key = key[7:]
             new_state_dict[new_key] = value
+        
         model.load_state_dict(new_state_dict)
         if quantize:
             try:
